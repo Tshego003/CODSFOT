@@ -1,0 +1,115 @@
+---
+title: "credit card"
+author: "Tshegofatso Kgomo"
+date: "2024-04-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(haven)
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(corrplot)
+library(DescTools)
+library(caTools)
+library(rpart)
+library(rpart.plot) 
+library(caret)
+library(reshape2)
+```
+
+
+```{r}
+###loading and checking data set
+credit <- read.csv("creditcard.csv")
+summary(credit)
+str(credit)
+head(credit)
+```
+
+
+```{r, results='asis', message=FALSE}
+table(credit$Class)
+corr <- cor(credit)
+corrplot(corr, method = "shade", type = "full", order = "original", tl.cex = 0.7, diag = FALSE, col = colorRampPalette(c("blue", "white", "turquoise", "yellow", "purple"))(10), adrect = 8, cl.cex = 0.7, number.cex = digits)
+```
+
+
+```{r}
+library(ROSE)
+credit <- na.omit(credit) ### Removing missing values
+credit$Amount <- scale(credit$Amount) 
+
+oversampleData <- ovun.sample(Class~.,data = credit, method = "over", N= nrow(credit), seed = 102)$data ###Handling imbalance and Oversampling
+```
+
+
+```{r}
+###testing and training data
+set.seed(101)
+sample <- sample.split(oversampleData$Class, SplitRatio = 0.8)
+
+credittrain <- subset(oversampleData, sample == TRUE)
+credittest <- subset(oversampleData, sample == FALSE)
+```
+
+
+```{r}
+###Logistic Regression
+credit_glm <- glm(Class~., data = credittrain, family = binomial) ### Running a logistic regression model
+summary(credit_glm)
+```
+
+
+```{r}
+###Using test data to run prediction of logistic model
+credit_predict <- predict(credit_glm, credittest, type = "response")
+
+credit_predict<- ifelse(credit_predict > 0.5, 1,0) ### This is meant to change probabilities to binary
+
+confusion.mat <- table(credittest$Class, credit_predict) ###Creating confusion matrix
+confusion.mat
+
+Creditaccuracy <- sum(diag(confusion.mat))/sum(confusion.mat) ###Calculating accuracy
+Creditaccuracy
+
+Creditprecision <- confusion.mat[2,2]/sum(confusion.mat, 2) ###Calculating Precision
+Creditprecision
+
+Creditrecall <- confusion.mat[2,2]/ sum(confusion.mat[2,]) ### Calculating recall
+Creditrecall
+
+f1score <- 2*Creditprecision*Creditrecall/(Creditprecision+Creditrecall)### Calculating F1 score
+f1score
+```
+
+
+```{r}
+###Running Decision Tree
+credittrain$Class <- factor(credittrain$Class)
+traindata <- credittrain[,1:30]
+trainclass <- credittrain[,31]
+tr3 <- trainControl(method = "cv", number = 5, savePredictions = TRUE)
+creditPredict <- train(traindata, trainclass,
+              method = "rpart",
+              trControl = tr3)
+
+confusionMatrix(creditPredict)
+
+rpart.plot(creditPredict$finalModel, box.palette = "BuGn",main = "Credit Card Fraud", extra = 101)
+
+rpart.rules(creditPredict$finalModel, cover = TRUE, clip.facs = TRUE)
+
+TestPredict <- rpart.predict(creditPredict,credittest)
+
+table(TestPredict, credittest$Class) %>%
+  prop.table()%>%
+  round(5)
+```
+
+
