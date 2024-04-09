@@ -1,0 +1,211 @@
+---
+title: "Titanic"
+author: "Tshegofatso Kgomo"
+date: "2024-03-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+###Loading Packages
+library(haven)
+library(ggplot2)
+library(ggthemes)
+library(dplyr)
+library(apaTables)
+library(corrgram)
+library(corrplot)
+library(DescTools)
+library(caTools)
+library(rpart)
+library(rpart.plot) 
+library(GGally)
+library(reshape2)
+library(caret)
+```
+
+
+```{r}
+###Loading the Titanic data set
+titanic <- read.csv("Titanic-Dataset.csv")
+```
+
+
+```{r}
+###Overview of the Titanic data set
+summary(titanic)
+str(titanic)
+head(titanic)
+```
+
+
+```{r}
+###Frequency Count
+ggplot(titanic, aes(x= Survived))+
+  geom_bar()+
+  labs(title = "Survivors", X = "Survivors", y= "Count")
+
+ggplot(titanic, aes(x= Survived, fill= Sex))+
+  geom_bar(position = "dodge")+
+  labs(x= "Survived", y= "Count", fill= "Sex")+
+  ggtitle("Survivors by Sex")
+
+
+ggplot(titanic, aes(x= factor(Survived), fill= factor(Pclass)))+
+  geom_bar(position = "dodge")+
+  labs(x= "Survived", y= "Count", fill= "Pclass")+
+  ggtitle("Survivors by Class")
+
+
+ggplot(titanic, aes(x= factor(Survived), fill= factor(SibSp)))+
+  geom_bar(position = "dodge")+
+  labs(x= "Survived", y= "Count", fill= "SibSp")+
+  ggtitle("Survivors by Sibling/Spouse")
+
+
+ggplot(titanic, aes(x= Age))+
+  geom_histogram(binwidth = 0.5, fill = "purple", color ="grey")+
+  labs(title = "Age", X = "Age", y= "Count")
+```
+
+*More people did not survive.*
+
+*More male travellers did not survive.*
+
+*Most of the travellers who did not survive were in 3rd class.*
+
+*Most of the travellers had either no siblings or 1 sibling.*
+
+*Most of the travellers were between 18-36, and the oldest traveller being 80 years*
+
+```{r}
+###checking for missing values
+titanic[titanic$Name=="", ]
+titanic[titanic$Sex=="", ]
+titanic[titanic$Cabin=="", ]
+sum(is.na(titanic$Age))
+```
+
+The Cabin Variable has 687 missing values, and the Age variable has 177 missing values.
+
+```{r}
+###Data for analysis
+titanic2 <- titanic[, c(2,3,5,6,7,8)]
+```
+
+To decision is to drop PassengerID, Name, Ticket, Fare, Cabin, and Embarked. These
+are dropped because they will provide much information in this instance of the analysis.
+
+
+```{r}
+###Replacing Missing Values
+sum(is.na(titanic2$Age))
+md <- Mode(titanic2$Age, na.rm = TRUE)
+md
+titanic2$Age <- ifelse(is.na(titanic2$Age), md, titanic2$Age)
+sum(is.na(titanic2$Age))
+```
+
+The missing values in the Age variable are replaced with the mode of the Age variable.
+
+```{r}
+###Summary statistics
+head(titanic2)
+summary(titanic2)
+str(titanic2)
+```
+
+
+```{r}
+### Using various visuals to see the final data set for analysis
+ggplot(titanic2, aes(Survived, Sex))+
+  geom_violin(trim = FALSE)+
+  ggtitle("survived by sex")
+
+ggplot(titanic2, aes(Survived)) + geom_density()+ ggtitle("Survived")
+ggplot(titanic2, aes(Pclass)) + geom_density()+ ggtitle("Pclass")
+ggplot(titanic2, aes(Sex)) + geom_density()+ ggtitle("Sex")
+ggplot(titanic2, aes(Age)) + geom_density()+ ggtitle("Age")
+ggplot(titanic2, aes(SibSp)) + geom_density()+ ggtitle("SibSp")
+ggplot(titanic2, aes(Parch)) + geom_density()+ ggtitle("Parch")
+
+data.long <- melt(titanic2)
+ggplot(data.long, aes(Sex, fill= variable))+
+  geom_density(alpha=0.5)+
+  facet_wrap(~variable, scales = "free")+
+  theme_minimal()
+```
+
+
+
+```{r, message=FALSE, results='asis'}
+###Correlation between the variables
+ggpairs(data = titanic2, columns= c(1,2, 3,4,5,6), title = "Titanic Survivors")
+corrgram(titanic2, order = TRUE, lower.panel = panel.shade, upper.panel = panel.pie)
+``` 
+
+
+```{r}
+###changing survived variable into factor
+new.labels <- c("Died", "Survived")
+titanic2$Survived <- factor(titanic2$Survived, labels = new.labels)
+table(titanic2$Survived)
+titanic2$Sex <- factor(titanic2$Sex)
+```
+
+
+```{r, results='asis', message=FALSE}
+###training data
+set.seed(101)
+sample <- sample.split(titanic2$Survived, SplitRatio = 0.5)
+
+train <- subset(titanic2, sample == TRUE)
+test <- subset(titanic2, sample == FALSE)
+```
+The data is split into training and test data.
+
+```{r}
+traindata <- train[,2:6]
+trainclass <- train[,1]
+tr <- trainControl(method = "cv", number = 5, savePredictions = TRUE)
+titanicPredict <- train(traindata, trainclass,
+              method = "rpart",
+              trControl = tr)
+
+confusionMatrix(titanicPredict)
+
+rpart.plot(titanicPredict$finalModel, box.palette = "BuGn",main = "Survivors", extra = 101)
+
+rpart.rules(titanicPredict$finalModel, cover = TRUE, clip.facs = TRUE)
+
+TestPredict <- rpart.predict(titanicPredict,test)
+
+table(TestPredict, test$Survived) %>%
+  prop.table()%>%
+  round(3)
+```
+
+## Confusion Matrix
+The confusion matrix has an accuracy average of 78.8%.
+
+## Decision Tree Model
+
+More male travellers did not survive the titanic crash.
+
+Of those who did not survive, majority were from 3rd class.
+
+Majority of those who survived had less than or 3 sibling and were less than or 30 years of age.
+
+## Predicition
+The prediction of the model are not far off, when testing data is used. 
+
+
+
+
+
+
+
